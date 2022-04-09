@@ -71,3 +71,51 @@ fn test_circuit_tx_setup_and_prove() {
     assert!(res, "Verifier result should be true");
 }
 
+#[test]
+fn test_circuit_tx_fullfill_reduced_energy() {
+    let mut rng = thread_rng();
+    let state = State::random_sample_state(&mut rng, &*POOL_PARAMS);
+    let (p, s) = state.random_sample_transfer_with_reduced_energy(&mut rng, &*POOL_PARAMS);
+
+    let ref cs = DebugCS::rc_new();
+    let ref p = CTransferPub::alloc(cs, Some(&p));
+    let ref s = CTransferSec::alloc(cs, Some(&s));
+
+    
+    let mut num_gates = cs.borrow().num_gates();
+    let start = Instant::now();
+    c_transfer(p, s, &*POOL_PARAMS);
+    let duration = start.elapsed();
+    num_gates=cs.borrow().num_gates()-num_gates;
+
+    println!("tx gates = {}", num_gates);
+    println!("Time elapsed in c_transfer() is: {:?}", duration);
+}
+
+#[test]
+fn test_circuit_tx_setup_and_prove_reduced_energy() {
+    fn circuit<C:CS<Fr=Fr>>(public: CTransferPub<C>, secret: CTransferSec<C>) {
+        c_transfer(&public, &secret, &*POOL_PARAMS);
+    }
+
+    let mut rng = thread_rng();
+    let state = State::random_sample_state(&mut rng, &*POOL_PARAMS);
+    let (public, secret) = state.random_sample_transfer_with_reduced_energy(&mut rng, &*POOL_PARAMS);
+
+    let ts_setup = Instant::now();
+    let params = setup::<Bn256, _, _, _>(circuit);
+    let duration = ts_setup.elapsed();
+    println!("Time elapsed in setup() is: {:?}", duration);
+
+    let ts_prove = Instant::now();
+    let (inputs, snark_proof) = prover::prove(&params, &public, &secret, circuit);
+    let duration = ts_prove.elapsed();
+    println!("Time elapsed in prove() is: {:?}", duration);
+
+    let ts_verify = Instant::now();
+    let res = verifier::verify(&params.get_vk(), &snark_proof, &inputs);
+    let duration = ts_verify.elapsed();
+    println!("Time elapsed in verify() is: {:?}", duration);
+
+    assert!(res, "Verifier result should be true");
+}
